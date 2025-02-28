@@ -162,6 +162,10 @@ def video_feed():
 def translation():
     return jsonify({"text": predicted_text})
 
+@app.route('/test')
+def test():
+    return jsonify({"text": "test"})
+
 
 if __name__ == '__main__':
     if not os.path.exists('action.h5'):
