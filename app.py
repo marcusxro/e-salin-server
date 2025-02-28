@@ -168,6 +168,6 @@ if __name__ == '__main__':
         train_model()  # Train the model if no pre-trained weights exist
     else:
         load_trained_model()  # Load pre-trained weights
-     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 10000)), debug=True)
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 10000)), debug=True)
 
 
