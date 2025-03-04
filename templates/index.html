@@ -1,1782 +1,204 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sign Language Translator</title>
-    <style>
-      /* Global styles */
-      body {
-        font-family: Arial, sans-serif;
-        text-align: center;
-        margin: 0;
-        background-image: url("../static/bg_translators.jpg");
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-      }
 
-      /* LOGO */
-      .logo {
-        position: absolute;
-        top: 10px;
-        left: 100px;
-        width: 80px; /* Scales dynamically */
-        height: auto;
-        margin-top: 5vh;
-      }
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gesture Recognition</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <style>
+    video,
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 640px;
+      height: 480px;
+      border: 1px solid black;
+    }
+  </style>
+</head>
 
-      /* HEADER */
-      .heading {
-        font-family: "Montserrat", sans-serif;
-        font-style: italic;
-        font-weight: bold;
-        font-size: 3vw; /* Responsive font size */
-        text-align: center;
-        align-items: center;
-        padding: 0 10vw;
-        margin-top: 5vh;
-        margin-bottom: 2vh;
-      }
+<body>
+  <video id="webcam" autoplay playsinline></video>
+  <canvas id="output" width="640" height="480"></canvas>
+  <p id="prediction"></p>
 
-      .heading span {
-        color: #ffb703;
-        font-weight: 800;
-        font-size: smaller;
-        text-shadow: -1px -1px 0 #023047, 1px -1px 0 #023047, -1px 1px 0 #023047,
-          1px 1px 0 #023047;
-      }
+  <script>
+    const video = document.getElementById("webcam");
+    const canvas = document.getElementById("output");
+    const ctx = canvas.getContext("2d");
+    const predictionText = document.getElementById("prediction");
 
-      /* Parent container to align camera and RightContainer side by side */
-      .content-wrapper {
-        display: flex; /* Places items in a row */
-        justify-content: center; /* Centers the items horizontally */
-        align-items: center; /* Aligns items at the same height */
-        gap: 10px; /* Adds space between the camera and RightContainer */
-        margin-top: 20px; /* Adjust spacing from the heading */
-      }
+    // Initialize Mediapipe Hands
+    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+    hands.onResults(onResults);
 
-      /* Camera feed */
-      .productContainer {
-        width: 500px; /* Set a fixed width for the camera */
-        height: auto;
-        margin-top: -20px;
-        border: 5px solid #023047;
+    // Start webcam
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        const camera = new Camera(video, {
+          onFrame: async () => { await hands.send({ image: video }); },
+          width: 640,
+          height: 480
+        });
+        camera.start();
+      } catch (error) {
+        console.error("Error accessing webcam:", error);
       }
+    }
 
-      /* RightContainer (command box) beside the camera */
-      .RightContainer {
-        display: flex;
-        flex-direction: column;
-        background-color: rgba(2, 48, 71, 1);
-        padding: 5px;
-        border-radius: 20px;
-        width: 400px; /* Fixed width */
-        max-width: 400px;
-        height: 400px; /* Fixed height */
-        max-height: 500px;
-        margin: 0; /* Remove unnecessary margins */
-      }
+    const sequence = []; // Array to store keypoints for 40 frames
 
-      /* COMMAND BOX */
-      .command {
-        font-size: 1.5vw;
-        font-style: bold;
-        font-weight: normal;
-        color: white;
-        font-family: "Montserrat", sans-serif;
-        padding: 0px;
-        margin-top: -10px;
-        margin-bottom: 10px;
-      }
-      .labelnote {
-        font-size: 1vw;
-        font-style: bolder;
-        font-weight: normal;
-        color: yellow;
-        font-family: "Montserrat", sans-serif;
-        padding: 0px;
-        margin-top: -35px;
-        margin-bottom: 5px;
-      }
+    function onResults(results) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      /* TEXT BOXES */
-      .tagalog {
-        font-size: 1.5vw;
-        font-weight: normal;
-        color: white;
-        font-family: "Montserrat", sans-serif;
-        text-align: center;
-        margin-top: -20px;
-        margin-bottom: 10px;
-      }
+      // Draw the video frame on the canvas
+      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-      .tagalogContainer {
-        width: 80%;
-        max-width: 400px;
-        background: #ffffff;
-        border: 2px solid #adc5ff;
-        border-radius: 6px;
-        /* Reduce height */
-        height: 20px; /* Set a smaller fixed height */
-        max-height: 20px; /* Prevents it from growing */
-        /* Center content */
-        display: flex; /* Enables Flexbox */
-        justify-content: center; /* Centers text horizontally */
-        align-items: center; /* Centers text vertically */
-        margin: 2vh auto;
-        padding: 5px;
-        font-size: 1.2vw;
-        font-family: "Roboto", sans-serif;
-        text-align: center;
-        margin-top: -20px;
-      }
+      // Draw hand landmarks and connections
+      if (results.multiHandLandmarks) {
+        for (const landmarks of results.multiHandLandmarks) {
+          // Draw landmarks
+          drawLandmarks(ctx, landmarks, { color: "#FF0000", lineWidth: 2 });
 
-      /* PHILIPPINE TEXT */
-      .philText {
-        font-size: 1.5vw;
-        font-weight: normal;
-        color: white;
-        font-family: "Montserrat", sans-serif;
-        text-align: center;
-        margin-top: -20px;
-        margin-bottom: 10px;
-      }
-
-      .philContainer {
-        width: 80%;
-        max-width: 400px;
-        background: #ffffff;
-        border: 2px solid #adc5ff;
-        border-radius: 6px;
-        margin: 2vh auto;
-        padding: 5px;
-        height: 100px; /* Set a smaller fixed height */
-        max-height: 100px; /* Prevents it from growing */
-        font-size: 1.2vw;
-        font-family: "Roboto", sans-serif;
-        text-align: center;
-        margin-top: -20px;
-        /* Center content */
-        display: flex; /* Enables Flexbox */
-        justify-content: center; /* Centers text horizontally */
-        align-items: center; /* Centers text vertically */
-      }
-
-      /* LANGUAGE SELECT DROPDOWN */
-      .language-select {
-        width: 80%;
-        max-width: 400px;
-        padding: 5px;
-        font-size: 1.3vw;
-        border: 2px solid #adc5ff;
-        border-radius: 6px;
-        background-color: white;
-        font-family: "Roboto", sans-serif;
-        text-align: center;
-        margin: 2vh auto;
-        margin-top: -5px;
-      }
-      /* MOBILE WARNING - Initially hidden */
-      #mobile-warning {
-        display: none; /* Hidden by default */
-      }
-
-      /* RESPONSIVENESS - Keeps Layout But Scales Down */
-      @media (max-width: 1000) {
-        .heading {
-          font-size: 4vw;
-          padding: 0 5vw;
-        }
-        .logo {
-          width: 10vw;
-        }
-        .productContainer,
-        .container,
-        .RightContainer,
-        .tagalogContainer,
-        .philContainer {
-          width: 90%;
-        }
-        .command,
-        .tagalog,
-        .philText {
-          font-size: 3vw;
-        }
-        .language-select {
-          font-size: 3vw;
-        }
-      }
-
-      @media (max-width: 600px) {
-        .heading {
-          font-size: 5vw;
-        }
-        .logo {
-          width: 12vw;
-        }
-        .command,
-        .tagalog,
-        .philText {
-          font-size: 4vw;
-        }
-        .productContainer {
-          width: 80%;
-        }
-        .container {
-          width: 80%;
-        }
-        .RightContainer {
-          width: 80%;
-        }
-        /* Show the mobile warning */
-        #mobile-warning {
-          display: block !important; /* Make it visible */
-          position: fixed; /* Fix the message in the center */
-          top: 50%; /* Center vertically */
-          left: 50%; /* Center horizontally */
-          transform: translate(-50%, -50%); /* Adjust for exact centering */
-          width: 80%; /* Set width */
-          padding: 20px; /* Add some padding */
-          text-align: center; /* Center the text inside the div */
-          background-color: #fff; /* Background color */
-          color: #000; /* Text color */
-          border: 2px solid #000; /* Add a border */
-          font-size: 1.5rem; /* Make text readable */
-          font-weight: bold;
-          z-index: 1000; /* Keep it on top */
+          // Draw connections
+          drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: "#00FF00", lineWidth: 2 });
         }
 
-        /* Hide all other content */
-        .content-wrapper,
-        .logo,
-        .heading {
-          display: none !important;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <!-- MOBILE WARNING MESSAGE -->
-    <div id="mobile-warning">
-      This website is not viewable on mobile devices.
-    </div>
-    <img src="../static/logos.png" alt="ESALIN Logo" class="logo" />
-
-    <div class="heading">
-      Filipino Sign Language to Speech
-      <br />
-      (3 Selected Philippine Languages)
-      <br />
-      <span>Sign your way to understanding</span>
-    </div>
-
-    <!-- Wrapper to position the camera and RightContainer side by side -->
-    <div class="content-wrapper">
-      <div class="camera-container">
-        <img
-          src="https://e-salin-server.onrender.com/video_feed"
-          alt="Video Stream"
-          class="productContainer"
-        />
-      </div>
-
-      <div class="RightContainer">
-        <div class="command">
-          <p>COMMAND BOX</p>
-        </div>
-        <div class="labelnote"><p>Note: Use your right hand.</p></div>
-
-        <select class="language-select" onchange="updateTranslation()">
-          <option value="all">Show All Languages</option>
-          <option value="cebuano">Cebuano</option>
-          <option value="ilocano">Ilocano</option>
-          <option value="waray">Waray</option>
-        </select>
-
-        <div class="tagalog">
-          <p>TAGALOG TEXT</p>
-        </div>
-
-        <div class="tagalogContainer">
-          <p>Translation: <span id="predictedText">N/A</span></p>
-        </div>
-
-        <div class="philText">
-          <p>PHILIPPINE LANGUAGE TEXT</p>
-        </div>
-
-        <div class="philContainer">
-          <div class="philTranslation">
-            <p id="cebuano">
-              Cebuano: <span id="cebuanoTranslation">N/A</span>
-            </p>
-            <p id="ilocano">
-              Ilocano: <span id="ilocanoTranslation">N/A</span>
-            </p>
-            <p id="waray">Waray: <span id="warayTranslation">N/A</span></p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <script>
-      // Translation Table
-      const translationTable = {
-        PAMILYA: { Ilocano: "Pamilia", Cebuano: "Pamilya", Waray: "Pamilya" },
-        NANAY: { Ilocano: "Nanang", Cebuano: "Inahan", Waray: "Iróy" },
-        TATAY: { Ilocano: "Tatang", Cebuano: "Amahan", Waray: "Amáy" },
-        LOLO: {
-          Ilocano: "Apong lakay",
-          Cebuano: "Lolo",
-          Waray: "Apóy Nga Lalake",
-        },
-        LOLA: {
-          Ilocano: "Apong baket",
-          Cebuano: "Lola",
-          Waray: "Apóy Nga Babaye",
-        },
-        ATE: {
-          Ilocano: "Manang",
-          Cebuano: "Manang",
-          Waray: "Bugtó Nga Babaye",
-        },
-        KUYA: {
-          Ilocano: "Manong",
-          Cebuano: "Manoy",
-          Waray: "Bugtó Nga Lalake",
-        },
-        TITO: { Ilocano: "Unkel", Cebuano: "Tiyo", Waray: "Batâ" },
-        TITA: { Ilocano: "Antie", Cebuano: "Tiya", Waray: "Dadâ" },
-        NINONG: {
-          Ilocano: "Ninong",
-          Cebuano: "Ninong",
-          Waray: "Amáy Ha Bunyág",
-        },
-        NINANG: {
-          Ilocano: "Ninang",
-          Cebuano: "Ninang",
-          Waray: "Iróy Ha Bunyág",
-        },
-        PINSAN: { Ilocano: "kasinsin", Cebuano: "Ig’Agaw", Waray: "Patód" },
-        APO: { Ilocano: "Apo", Cebuano: "Apo", Waray: "Apó" },
-        BATA: { Ilocano: "Obing", Cebuano: "Bata", Waray: "Batá" },
-        SANGGOL: {
-          Ilocano: "Obing",
-          Cebuano: "Bata",
-          Waray: "Minasus-Án/Puyá",
-        },
-        AMPON: { Ilocano: "Ampon", Cebuano: "Gisagop", Waray: "Pinarigonán" },
-        KINUPKOP: {
-          Ilocano: "Tinaraken",
-          Cebuano: "Gigakos",
-          Waray: "Panalipód",
-        },
-        "Mga bata": {
-          Ilocano: "mga obing",
-          Cebuano: "Mga Bata",
-          Waray: "Mga Batá",
-        },
-        MAGULANG: {
-          Ilocano: "Nagannak",
-          Cebuano: "Ginikanan",
-          Waray: "Kag-Anák",
-        },
-        "ANAK NA LALAKI": {
-          Ilocano: "Nilalakyan",
-          Cebuano: "Anak Nga Lalaki",
-          Waray: "Anák Nga Lalake",
-        },
-        "ANAK NA BABAE": {
-          Ilocano: "Binabatyan",
-          Cebuano: "Anak Na Babaye",
-          Waray: "Anák Nga Babaye",
-        },
-        "ASAWANG LALAKI": {
-          Ilocano: "Manugang Nga Linalakyan",
-          Cebuano: "Bana",
-          Waray: "Asawa Nga Lalake",
-        },
-        "ASAWANG BABAE": {
-          Ilocano: "Manugang Nga Binabatyan",
-          Cebuano: "Asawa",
-          Waray: "Asawa Nga Babaye",
-        },
-        "PAMANGKIN NA LALAKI": {
-          Ilocano: "Kaanakan Na Lalaki",
-          Cebuano: "Pag-Umangkon Nga Lalaki",
-          Waray: "Umangkón Nga Lalake",
-        },
-        "PAMANGKIN NA BABAE": {
-          Ilocano: "Kaanakan Na Babai",
-          Cebuano: "Pag-Umangkon Nga Babaye",
-          Waray: "Umangkón Nga Babaye",
-        },
-        OPO: { Ilocano: "Opo", Cebuano: "Opo", Waray: "Opo" },
-        OO: { Ilocano: "Wen", Cebuano: "Oo", Waray: "Oo" },
-        TINEDYER: {
-          Ilocano: "Babbarito",
-          Cebuano: "Tinedyer",
-          Waray: "Ulitawohay",
-        },
-        KASAL: { Ilocano: "Kasar", Cebuano: "Kasal", Waray: "Kasál" },
-        BUNTIS: { Ilocano: "Masikog", Cebuano: "Buntis", Waray: "Burod" },
-        NOBYO: { Ilocano: "Nobyo", Cebuano: "Uyab", Waray: "Nobyó" },
-        BARKADA: { Ilocano: "Gagayem", Cebuano: "Barkada", Waray: "Sangkáy" },
-        KASINTAHAN: {
-          Ilocano: "Kain Inayat",
-          Cebuano: "Uyab",
-          Waray: "Konsolyó",
-        },
-        ARAL: { Ilocano: "Ag-Adal", Cebuano: "Leksyon", Waray: "Arám" },
-        BASA: { Ilocano: "Basa", Cebuano: "Basa", Waray: "Basaha" },
-        KINIG: { Ilocano: "Dumngeg", Cebuano: "Paminaw", Waray: "Pamati" },
-        TAWA: { Ilocano: "Agillek", Cebuano: "Katawa", Waray: "Tawá" },
-        SIGAW: { Ilocano: "Pukkaw", Cebuano: "Singgit", Waray: "Guliat" },
-        INOM: { Ilocano: "Agbartek", Cebuano: "Inom", Waray: "Inóm" },
-        HINTO: { Ilocano: "Sardeng", Cebuano: "Hunong", Waray: "Umodóng" },
-        TAKBO: { Ilocano: "Tumaray", Cebuano: "Dagan", Waray: "Dumalagan" },
-        LARO: { Ilocano: "Agayayam", Cebuano: "Duwa", Waray: "Uyág" },
-        TALON: { Ilocano: "Lumagto", Cebuano: "Ambak", Waray: "Luksó" },
-        SAYAW: { Ilocano: "Agsala", Cebuano: "Gi-saw", Waray: "Sayaw" },
-        IYAK: { Ilocano: "Sangit", Cebuano: "Hilak", Waray: "Hibi" },
-        SALO: { Ilocano: "Makitipon", Cebuano: "Saw", Waray: "Sálo" },
-        LINIS: { Ilocano: "Agdalus", Cebuano: "Limpyo", Waray: "Hamisi" },
-        GUSTO: { Ilocano: "Kayat na", Cebuano: "Giganahan", Waray: "Ruyág" },
-        PAGHANGA: {
-          Ilocano: "Panagusto",
-          Cebuano: "Pagdayeg",
-          Waray: "Pagbilib/Paghánga",
-        },
-        YAKAP: { Ilocano: "Arakop", Cebuano: "Gakos", Waray: "Gakós" },
-        HALIK: { Ilocano: "Bisito", Cebuano: "Halok", Waray: "Harók" },
-        LAKAD: { Ilocano: "Magna", Cebuano: "Lakaw", Waray: "Lákaw" },
-        TIGIL: { Ilocano: "Pagsardengen", Cebuano: "Hunong", Waray: "Álto" },
-        MAGLARO: {
-          Ilocano: "Agay Ayam",
-          Cebuano: "Magduwa",
-          Waray: "Mag--Uyág",
-        },
-        MAGRESERBA: {
-          Ilocano: "Agpa Reserba",
-          Cebuano: "Reserba",
-          Waray: "Mág-gahin",
-        },
-        UPO: { Ilocano: "Agtugaw", Cebuano: "Lingkod", Waray: "Íngkud" },
-        TANGGAPIN: {
-          Ilocano: "Awatem",
-          Cebuano: "Pagdawat",
-          Waray: "Karawata",
-        },
-        BUMILI: { Ilocano: "Gumatang", Cebuano: "Pagpalit", Waray: "Palit" },
-        PAGEHERSISYO: {
-          Ilocano: "Pagwatwat Ti Bagi",
-          Cebuano: "Ehersisyo",
-          Waray: "Pag-Ehersisyó",
-        },
-        LUMABAS: { Ilocano: "Rumuar", Cebuano: "Mogawas", Waray: "Gunuwás" },
-        PAUMANHIN: {
-          Ilocano: "Dispensar",
-          Cebuano: "Pasensya",
-          Waray: "Pamaribad",
-        },
-        MAGBILANG: {
-          Ilocano: "Agbilang",
-          Cebuano: "Magihap",
-          Waray: "Mag-Iháp",
-        },
-        MAGLUTO: { Ilocano: "Agluto", Cebuano: "Long-Ag", Waray: "Maglutó" },
-        MATUWA: {
-          Ilocano: "Maragsakan",
-          Cebuano: "Magmalipayon",
-          Waray: "Málipay",
-        },
-        LIGO: { Ilocano: "Digus", Cebuano: "Pagkaligo", Waray: "Rigó" },
-        "PAG-AARAL": {
-          Ilocano: "Panag Adal",
-          Cebuano: "Pagtuon",
-          Waray: "Pag-Arám",
-        },
-        GISING: { Ilocano: "Siririing", Cebuano: "Mata", Waray: "Máta" },
-        TULOG: { Ilocano: "Maturong", Cebuano: "Katug", Waray: "Túrug" },
-        ISIP: {
-          Ilocano: "Panunoten",
-          Cebuano: "Gi Huna-Huna",
-          Waray: "Húna-Huna",
-        },
-        ALAM: { Ilocano: "Ammuen", Cebuano: "Ka", Waray: "Áram" },
-        UNAWAIN: { Ilocano: "Awaten", Cebuano: "Sabti", Waray: "Íntyindihon" },
-        KABISADUHIN: {
-          Ilocano: "Tandaanan",
-          Cebuano: "Sag-Oha",
-          Waray: "Túumon",
-        },
-        PANOORIN: { Ilocano: "Siputan", Cebuano: "Tan Awa", Waray: "Ímudon" },
-        BUMULONG: {
-          Ilocano: "Yarasaas",
-          Cebuano: "Hung-Hung",
-          Waray: "Húnuring",
-        },
-        MARAMDAMAN: {
-          Ilocano: "Ricnaen",
-          Cebuano: "Pagbati",
-          Waray: "Madúmut",
-        },
-        TIKMAN: { Ilocano: "Ramanan", Cebuano: "Tilaw", Waray: "Tádihan" },
-        AMOYIN: { Ilocano: "Anguten", Cebuano: "Simhot", Waray: "Báhuon" },
-        HIPO: { Ilocano: "Piduaen", Cebuano: "Nanghikap", Waray: "Hápros" },
-        TRABAHO: { Ilocano: "Agtrabaho", Cebuano: "Trabaho", Waray: "Trábaho" },
-        TAWAG: { Ilocano: "Ayaban", Cebuano: "Gi-Tawag", Waray: "Gáhoy" },
-        LIMBAG: { Ilocano: "Imaldit", Cebuano: "Nagsuwat", Waray: "Límbag" },
-        LUMAPIT: { Ilocano: "Umasideg", Cebuano: "Nidool", Waray: "Húnarani" },
-        MALAKAS: { Ilocano: "Napigsa", Cebuano: "Lig-On", Waray: "Makusóg" },
-        MATIGAS: { Ilocano: "Natangken", Cebuano: "Gahi", Waray: "Matig-Á" },
-        MALAMBOT: { Ilocano: "Nalukneng", Cebuano: "Humok", Waray: "Mahumok" },
-        KYUT: { Ilocano: "Nalapsak", Cebuano: "Kyut", Waray: "Kyut/Máhusay" },
-        MAGANDA: { Ilocano: "Napintas", Cebuano: "Gwapa", Waray: "Mahusay" },
-        MATANDA: { Ilocano: "Apong", Cebuano: "Tigulang", Waray: "Edaran" },
-        MALAYO: { Ilocano: "Adayo", Cebuano: "Layo", Waray: "Hirayô" },
-        MALAPIT: { Ilocano: "Asideg", Cebuano: "Duol", Waray: "Hirani" },
-        NALILITO: {
-          Ilocano: "Mariribukan",
-          Cebuano: "Naglibog",
-          Waray: "Nálilisang",
-        },
-        MUNTI: { Ilocano: "Bassit", Cebuano: "Gamay", Waray: "Gutiay" },
-        BATA: { Ilocano: "Ubbing", Cebuano: "Bata", Waray: "Batá" },
-        MATABA: { Ilocano: "Nalukmeg", Cebuano: "Tambok", Waray: "Matambok" },
-        PAYAT: { Ilocano: "Nakuttong", Cebuano: "Daot", Waray: "Haligot" },
-        NADISMAYA: {
-          Ilocano: "Naawanan Ganas",
-          Cebuano: "Nalain",
-          Waray: "Magturaw",
-        },
-        POOT: { Ilocano: "Makagura", Cebuano: "Pagdumot", Waray: "Mapungot" },
-        PAGOD: { Ilocano: "Nabannog", Cebuano: "Kapoy", Waray: "Magbudlay" },
-        SORPRESA: {
-          Ilocano: "Sorpresa",
-          Cebuano: "Katingala",
-          Waray: "Pag-Ulhag",
-        },
-        MANIPIS: { Ilocano: "Naingpis", Cebuano: "Nipis", Waray: "Gutiay" },
-        MAKAPAL: {
-          Ilocano: "Napuskol",
-          Cebuano: "Mani Siya",
-          Waray: "Madakmol",
-        },
-        MAKINIS: { Ilocano: "Nalamuyot", Cebuano: "Hamis", Waray: "Pino" },
-        MAGASPANG: {
-          Ilocano: "Nakirsang",
-          Cebuano: "Bagis",
-          Waray: "Garang-Gasang",
-        },
-        MATANGKAD: { Ilocano: "Natayag", Cebuano: "Taas", Waray: "Hitaas" },
-        MABABA: { Ilocano: "Naatiddog", Cebuano: "Mubo", Waray: "Hamubo" },
-        KULOT: { Ilocano: "Kulot", Cebuano: "Kulot", Waray: "Kurong" },
-        "TUWID ANG BUHOK": {
-          Ilocano: "Unat Ti Buok",
-          Cebuano: "Tul-Id Ng Buhok",
-          Waray: "Tul-Id Nga Buhok",
-        },
-        MAHAL: { Ilocano: "Nangina", Cebuano: "Gihigugma", Waray: "Humigugma" },
-        ESPESYAL: { Ilocano: "Espesiyal", Cebuano: "Espesyal", Waray: "Kaiba" },
-        MATALIM: { Ilocano: "Natadem", Cebuano: "Hait", Waray: "Matarom" },
-        MAPUROL: {
-          Ilocano: "Nangulngol",
-          Cebuano: "Habulan",
-          Waray: "Mangarol",
-        },
-        WALA: { Ilocano: "Awan", Cebuano: "Wa-Man", Waray: "Waray" },
-        BAGO: { Ilocano: "Kabarbaro", Cebuano: "Bag-O", Waray: "Bag-O" },
-        KAUNTI: { Ilocano: "Bassit", Cebuano: "Gamay", Waray: "Gutiay" },
-        MARUMI: { Ilocano: "Narugit", Cebuano: "Hugaw", Waray: "Mahugaw" },
-        MAARAW: { Ilocano: "Napudot", Cebuano: "Init", Waray: "Kat-Adlaw" },
-        MAULAN: { Ilocano: "Matutudo", Cebuano: "Nag-Uwan", Waray: "Kat-Uran" },
-        NGAYON: { Ilocano: "Ittatta", Cebuano: "Karon", Waray: "Yana" },
-        BUKAS: { Ilocano: "No Bigat", Cebuano: "Ugma", Waray: "Buwas" },
-        MAMAYA: { Ilocano: "Madamdama", Cebuano: "Unya", Waray: "Unina" },
-        KAHAPON: { Ilocano: "Idi Kalma", Cebuano: "Gahapon", Waray: "Kakulop" },
-        UMAGA: { Ilocano: "Itibigat", Cebuano: "Buntag", Waray: "Aga" },
-        TANGHALI: { Ilocano: "Itay Aldaw", Cebuano: "Udto", Waray: "Udto" },
-        HAPON: { Ilocano: "Itimalem", Cebuano: "Hapon", Waray: "Kulop" },
-        GABI: { Ilocano: "Iti Rabii", Cebuano: "Gabie", Waray: "Gab-I" },
-        MAGMASID: {
-          Ilocano: "Kitaen A Nalaing",
-          Cebuano: "Relo",
-          Waray: "Mag-Inaw",
-        },
-        "ALAS SAIS NG UMAGA": {
-          Ilocano: "Alas Sais Ti Bigat",
-          Cebuano: "Alas Sais Sa Buntag",
-          Waray: "Álas Sáis Han Ága",
-        },
-        "ALAS SYETE NG UMAGA": {
-          Ilocano: "Alas Syete Ti Bigat",
-          Cebuano: "Alas Siete Sa Buntag",
-          Waray: "Álas Syite Han Ága",
-        },
-        "ALAS OTSO NG UMAGA": {
-          Ilocano: "Alas Otso Ti Bigat",
-          Cebuano: "Alas Otso Sa Buntag",
-          Waray: "Álas Utso Han Ága",
-        },
-        "ALAS NUWEBE NG UMAGA": {
-          Ilocano: "Alas Nuwebe Ti Bigat",
-          Cebuano: "Alas Nuwebe Sa Buntag",
-          Waray: "Álas Nuebe Han Ága",
-        },
-        "ALAS DIYES NG UMAGA": {
-          Ilocano: "Alas Diyes Ti Bigat",
-          Cebuano: "Alas Diyes Sa Buntag",
-          Waray: "Álas Dyeshan Ága",
-        },
-        "ALAS ONSE NG UMAGA": {
-          Ilocano: "Alas Onse Ti Bigat",
-          Cebuano: "Alas Onse Sa Buntag",
-          Waray: "Álas Onse Han Ága",
-        },
-        "ALAS DOSE NG TANGHALI": {
-          Ilocano: "Alas Dose Ti Aldaw",
-          Cebuano: "Alas Dose Sa Udto",
-          Waray: "Álas Dose Han Ága",
-        },
-        "ALA UNA NG HAPON": {
-          Ilocano: "Ala Una Ti Malem",
-          Cebuano: "Ala Una Sa Hapon",
-          Waray: "Álas Una Han Kulop",
-        },
-        "ALAS DOS NG HAPON": {
-          Ilocano: "Alas Dos Ti Malem",
-          Cebuano: "Alas Dos Sa Hapon",
-          Waray: "Álas Dos Han Kulop",
-        },
-        "ALAS TRES NG HAPON": {
-          Ilocano: "Alas Tres Ti Malem",
-          Cebuano: "Alas Tres Sa Hapon",
-          Waray: "Álas Tres Han Kulop",
-        },
-        "ALAS KUWATRO NG HAPON": {
-          Ilocano: "Alas Kuwatro Ti Malem",
-          Cebuano: "Alas Kuwatro Sa Hapon",
-          Waray: "Álas Kwatro Han Kulop",
-        },
-        "ALAS SINGKO NG HAPON": {
-          Ilocano: "Alas Singko Ti Malem",
-          Cebuano: "Alas Singko Sa Hapon",
-          Waray: "Álas Singko Han Kulop",
-        },
-        "ALAS SAIS NG GABI": {
-          Ilocano: "Alas Sais Ti Malem",
-          Cebuano: "Alas Sais Sa Gabie",
-          Waray: "Álas Sais Han Kulop",
-        },
-        "ALAS SYETE NG GABI": {
-          Ilocano: "Alas Syete Ti Rabii",
-          Cebuano: "Alas Seite Sa Gabie",
-          Waray: "Álas Syite Han Gab-I",
-        },
-        "ALAS OTSO NG GABI": {
-          Ilocano: "Alas Otso Ti Rabii",
-          Cebuano: "Alas Otso Sa Gabie",
-          Waray: "Álas Otso Han Gab-I",
-        },
-        "ALAS NUWEBE NG GABI": {
-          Ilocano: "Alas Nuwebe Ti Rabii",
-          Cebuano: "Alas Nuwebe Sa Gabie",
-          Waray: "Álas Nuebe Han Gab-I",
-        },
-        "ALAS DIYES NG GABI": {
-          Ilocano: "Alas Diyes Ti Rabii",
-          Cebuano: "Alas Diyes Sa Gabie",
-          Waray: "Álas Dyes Han Gab-I",
-        },
-        "ALAS ONSE NG GABI": {
-          Ilocano: "Alas Onse Ti Rabii",
-          Cebuano: "Alas Onse Sa Gabie",
-          Waray: "Álas Onsehan Gab-I",
-        },
-        "ALAS DOSE NG MADALING ARAW": {
-          Ilocano: "Alas Dose Ti Bigat",
-          Cebuano: "Alas Dose Sa Kadlaw",
-          Waray: "Álas Dose Han Aga",
-        },
-        MONDAY: { Ilocano: "Lunes", Cebuano: "Lunes", Waray: "Lunes" },
-        TUESDAY: { Ilocano: "Martes", Cebuano: "Martes", Waray: "Martes" },
-        WEDNESDAY: {
-          Ilocano: "Miyerkules",
-          Cebuano: "Miyerkules",
-          Waray: "Miyerkoles",
-        },
-        THURSDAY: { Ilocano: "Huwebes", Cebuano: "Huwebes", Waray: "Huybes" },
-        FRIDAY: { Ilocano: "Biyernes", Cebuano: "Biyernes", Waray: "Byernes" },
-        SATURDAY: { Ilocano: "Sabado", Cebuano: "Sabado", Waray: "Sabado" },
-        SUNDAY: { Ilocano: "Domingo", Cebuano: "Dominggo", Waray: "Domingo" },
-        LINGGO: { Ilocano: "Domingo", Cebuano: "Dominggo", Waray: "Domingo" },
-        "ISANG BUWAN": {
-          Ilocano: "Maysa bulan",
-          Cebuano: "Usa Ka Buwan",
-          Waray: "Bulan",
-        },
-        "DALAWANG BUWAN": {
-          Ilocano: "Dua bulan",
-          Cebuano: "Duha Ka Buwan",
-          Waray: "Doha Kabulan",
-        },
-        "TATLONG BUWAN": {
-          Ilocano: "Tallo bulan",
-          Cebuano: "Tulo Ka Buwan",
-          Waray: "Tulo Kabulan",
-        },
-        TAON: { Ilocano: "Tawen", Cebuano: "Tuig", Waray: "Tuig" },
-        "ISANG TAON": {
-          Ilocano: "Maysa tawen",
-          Cebuano: "Usa Ka Tuig",
-          Waray: "Sayô Katuig",
-        },
-        "DALAWANG TAON": {
-          Ilocano: "Dua tawen",
-          Cebuano: "Duha Ka Tuig",
-          Waray: "Doha Katuig",
-        },
-        "TATLONG TAON": {
-          Ilocano: "Tallo tawen",
-          Cebuano: "Tulo Ka Tuig",
-          Waray: "Tulo Katuig",
-        },
-        "ISANG LINGGO": {
-          Ilocano: "Maysa a domingo",
-          Cebuano: "Usa Ka Simana",
-          Waray: "Semana",
-        },
-        "DALAWANG LINGGO": {
-          Ilocano: "Dua a dominggo",
-          Cebuano: "Duha Ka Simana",
-          Waray: "Duha Kasemana",
-        },
-        ARAW: { Ilocano: "Adlaw", Cebuano: "Kada-Adlaw", Waray: "Adlaw" },
-        "ISANG ARAW": {
-          Ilocano: "Maysa adlaw",
-          Cebuano: "Usa Ka Adlaw",
-          Waray: "Sayô Kaadlaw",
-        },
-        "DALAWANG ARAW": {
-          Ilocano: "Dua nga adlaw",
-          Cebuano: "Duha Ka Adlaw",
-          Waray: "Doha Kaadlaw",
-        },
-        "TATLONG ARAW": {
-          Ilocano: "Tallo nga adlaw",
-          Cebuano: "Tulo Ka Adlaw",
-          Waray: "Tulo Kaadlaw",
-        },
-        ENERO: { Ilocano: "Enero", Cebuano: "Enero", Waray: "Enero" },
-        PEBRERO: { Ilocano: "Pebrero", Cebuano: "Pebrero", Waray: "Pebrero" },
-        MARSO: { Ilocano: "Marso", Cebuano: "Marso", Waray: "Marso" },
-        ABRIL: { Ilocano: "Abril", Cebuano: "Abril", Waray: "Abril" },
-        MAYO: { Ilocano: "Mayo", Cebuano: "Mayo", Waray: "Mayo" },
-        HUNYO: { Ilocano: "Hunyo", Cebuano: "Hunyo", Waray: "Hunyo" },
-        HULYO: { Ilocano: "Hulyo", Cebuano: "Hulyo", Waray: "Hulyo" },
-        AGOSTO: { Ilocano: "Agosto", Cebuano: "Agosto", Waray: "Agosto" },
-        SETYEMBRE: {
-          Ilocano: "Setyembre",
-          Cebuano: "Setyembre",
-          Waray: "Setyembre",
-        },
-        OKTUBRE: { Ilocano: "Oktubre", Cebuano: "Oktubre", Waray: "Oktubre" },
-        NOBYEMBRE: {
-          Ilocano: "Nobyembre",
-          Cebuano: "Nobyembre",
-          Waray: "Nobyembre",
-        },
-        DISYEMBRE: {
-          Ilocano: "Disyembre",
-          Cebuano: "Disyembre",
-          Waray: "Desyembre",
-        },
-        SINO: { Ilocano: "Sino", Cebuano: "Kinsa", Waray: "Hin-O" },
-        ANO: { Ilocano: "Ania", Cebuano: "Unsa", Waray: "Ano" },
-        SAAN: { Ilocano: "Sadino", Cebuano: "Asa", Waray: "Diin" },
-        KAILAN: { Ilocano: "Kaano", Cebuano: "Kanus-A", Waray: "San-O" },
-        BAKIT: { Ilocano: "Apay", Cebuano: "Nganu", Waray: "Kay Ano" },
-        ALIN: { Ilocano: "Ania Kaniyada", Cebuano: "Asa", Waray: "Hain" },
-        PAANO: { Ilocano: "Kasano", Cebuano: "Unsaon", Waray: "Paunan-O" },
-        ILAN: { Ilocano: "Mano", Cebuano: "Pila", Waray: "Pira" },
-        MAGKANO: { Ilocano: "Sagmamano", Cebuano: "Pila", Waray: "Pira" },
-        PULA: { Ilocano: "Nalabag", Cebuano: "Puwa", Waray: "Pula" },
-        KAHEL: { Ilocano: "Kahel", Cebuano: "Kahel", Waray: "Kahel" },
-        DILAW: { Ilocano: "Amarilyo", Cebuano: "Dilaw", Waray: "Dulaw" },
-        LILA: { Ilocano: "Lila", Cebuano: "Lila", Waray: "Purpura" },
-        ASUL: { Ilocano: "Asul", Cebuano: "Asul", Waray: "Asul" },
-        BERDE: { Ilocano: "Berde", Cebuano: "Berde", Waray: "Berde/Grin" },
-        ROSAS: { Ilocano: "Rosa", Cebuano: "Rosa", Waray: "Rosas" },
-        KAYUMANGGI: {
-          Ilocano: "Kyumanggi",
-          Cebuano: "Kayumanggi",
-          Waray: "Kayumanggi",
-        },
-        PUTI: { Ilocano: "Puraw", Cebuano: "Puti", Waray: "Busag" },
-        ITIM: { Ilocano: "Nangisit", Cebuano: "Itom", Waray: "Itom" },
-        KULAY: { Ilocano: "Kolor", Cebuano: "Kolor", Waray: "Kolor" },
-        BAHAGHARI: {
-          Ilocano: "Bullalayaw",
-          Cebuano: "Bahaghari",
-          Waray: "Balangaw",
-        },
-        GINTO: { Ilocano: "Balitok", Cebuano: "Ginto", Waray: "Bulawan" },
-        ABO: { Ilocano: "Abo", Cebuano: "Abo", Waray: "Kolor Uban" },
-        PILAK: { Ilocano: "Pilak", Cebuano: "Pilak", Waray: "Plata" },
-        PAGUPITAN: {
-          Ilocano: "Pagpukisan",
-          Cebuano: "Kurtehanan",
-          Waray: "Paarutan",
-        },
-        PANADERYA: {
-          Ilocano: "Panaderya",
-          Cebuano: "Panaderya",
-          Waray: "Panaderya",
-        },
-        BANGKO: { Ilocano: "Banko", Cebuano: "Bangko", Waray: "Bangko" },
-        TULAY: { Ilocano: "Rangtay", Cebuano: "Tulay", Waray: "Tulay" },
-        KAPEHAN: {
-          Ilocano: "Pagkappian",
-          Cebuano: "Kapehan",
-          Waray: "Kapehan",
-        },
-        SEMENTERYO: {
-          Ilocano: "Kampo Santo",
-          Cebuano: "Lubngangan",
-          Waray: "Kamposanto",
-        },
-        SIMBAHAN: {
-          Ilocano: "Simbaan",
-          Cebuano: "Simbahan",
-          Waray: "Singbahan",
-        },
-        KLINIKA: { Ilocano: "Klinika", Cebuano: "Klinika", Waray: "Klinika" },
-        TINDAHAN: {
-          Ilocano: "Paglakuan",
-          Cebuano: "Tindahan",
-          Waray: "Tiendahan",
-        },
-        PABRIKA: { Ilocano: "Pabrika", Cebuano: "Pabreka", Waray: "Pabrika" },
-        PALENGKE: { Ilocano: "Tiendaan", Cebuano: "Merkado", Waray: "Merkado" },
-        ISTASYON_NG_BUMBERO: {
-          Ilocano: "Istasyon ti bombero",
-          Cebuano: "Estasyon Sa Bombero",
-          Waray: "Istasyon Han Bombero",
-        },
-        TINDAHAN_NG_BULAKLAK: {
-          Ilocano: "Trendaan ti sabong",
-          Cebuano: "Tindahan Sa Bulak",
-          Waray: "Tindahan Han Bukad",
-        },
-        ISTASYON_NG_GAS: {
-          Ilocano: "Gasolinahan",
-          Cebuano: "Gasolinahan",
-          Waray: "Istasyon Han Gasolina",
-        },
-        MALIIT_NA_PAMILIHAN: {
-          Ilocano: "Tiendaan",
-          Cebuano: "Gamay Nga Tindahan",
-          Waray: "Gutiay Nga Merkado",
-        },
-        SALON_NG_BUHOK: {
-          Ilocano: "Salon Ti Buhok",
-          Cebuano: "Salon Sa Buhok",
-          Waray: "Salon Hin Buhok",
-        },
-        HOTEL: { Ilocano: "Otel", Cebuano: "Hotel", Waray: "Hotel" },
-        OSPITAL: { Ilocano: "Ospital", Cebuano: "Ospital", Waray: "Ospital" },
-        KULUNGAN: {
-          Ilocano: "Pagbaludan",
-          Cebuano: "Prisohan",
-          Waray: "Karsel",
-        },
-        SILID_AKLATAN: {
-          Ilocano: "Silid ti libro",
-          Cebuano: "Lawak Sa Librarya",
-          Waray: "Barasahan",
-        },
-        MALAKING_PAMILIHAN: {
-          Ilocano: "Dakkol Nga Paggatangan",
-          Cebuano: "Dako Nga Merkado",
-          Waray: "Dako Nga Merkado",
-        },
-        MUSEO: { Ilocano: "Musuleo", Cebuano: "Museyo", Waray: "Museo" },
-        TEATRO: { Ilocano: "Intablado", Cebuano: "Teatro", Waray: "Teyatro" },
-        KAPITBAHAY: { Ilocano: "Karuba", Cebuano: "Silingan", Waray: "Anyaw" },
-        SARI_SARI_STORE: {
-          Ilocano: "Tiendaan",
-          Cebuano: "Sari-Sari Store",
-          Waray: "Iba-Iba Nga Paninda",
-        },
-        OPISINA: { Ilocano: "Opis", Cebuano: "Opisina", Waray: "Upisina" },
-        PARKE: { Ilocano: "Parke", Cebuano: "Parke", Waray: "Plasa" },
-        PARADAHAN: {
-          Ilocano: "Paradaan",
-          Cebuano: "Parkingan",
-          Waray: "Parke",
-        },
-        BOTIKA: { Ilocano: "Botika", Cebuano: "Botika", Waray: "Parmasiya" },
-        ISTASYON_NG_PULISIYA: {
-          Ilocano: "Istasyon ti pulis",
-          Cebuano: "Estasyon Sa Pulis",
-          Waray: "Istasyon Hab Pulis",
-        },
-        TANGGAPAN_NG_SULAT: {
-          Ilocano: "Koreo",
-          Cebuano: "Opisina Sa Koreyo",
-          Waray: "Opisina Han Koreo",
-        },
-        RESTAURANT: {
-          Ilocano: "Panganan",
-          Cebuano: "Restawran",
-          Waray: "Restawran",
-        },
-        PAARALAN: {
-          Ilocano: "Iskuelaan",
-          Cebuano: "Eskwelahan",
-          Waray: "Eskuwelahan",
-        },
-        "ISTASYON NG TREN": {
-          Ilocano: "Istasyon ti tren",
-          Cebuano: "Estasyon Sa Tren",
-          Waray: "Istasyon Han Tren",
-        },
-        MONUMENTO: {
-          Ilocano: "Monomento",
-          Cebuano: "Monumento",
-          Waray: "Monumento",
-        },
-        PALAHAYUPAN: {
-          Ilocano: "Pagtaraknan",
-          Cebuano: "Kahayupan",
-          Waray: "Hardin Soolohiko",
-        },
-        PAMAHALAAN: {
-          Ilocano: "Gobyerno",
-          Cebuano: "Hobyerno",
-          Waray: "Gobiyerno",
-        },
-        COMPUTER: {
-          Ilocano: "Komputeran",
-          Cebuano: "Komputeran",
-          Waray: "Kompyuteran",
-        },
-        GASOLINAHAN: {
-          Ilocano: "Paggasan",
-          Cebuano: "Gasolinahan",
-          Waray: "Gasolinahan",
-        },
-        "UKAY-UKAY": {
-          Ilocano: "Ukayan",
-          Cebuano: "Ukay-Ukayan",
-          Waray: "Ukay-Ukay",
-        },
-        BAHAY: { Ilocano: "Balay", Cebuano: "Balay", Waray: "Balay" },
-        "BAHAY PAUPAHAN": {
-          Ilocano: "Balay nga paupaan",
-          Cebuano: "Balay Nga Gipaabangan",
-          Waray: "Papletihan Nga Balay",
-        },
-        KONDOMINYUM: {
-          Ilocano: "Kondo",
-          Cebuano: "Kondominyum",
-          Waray: "Kondominyum",
-        },
-        UPA: { Ilocano: "Abang", Cebuano: "Iga-Abang", Waray: "Plete" },
-        MANSYON: {
-          Ilocano: "Dakel A Balay",
-          Cebuano: "Mansyon",
-          Waray: "Dako Nga Balay",
-        },
-        "BAHAY KUBO": {
-          Ilocano: "Kubo Kalabaw",
-          Cebuano: "Payag",
-          Waray: "Payag",
-        },
-        KASTILYO: {
-          Ilocano: "Palasio",
-          Cebuano: "Kastilyo",
-          Waray: "Kastilyo",
-        },
-        LUGAR: { Ilocano: "Lugar", Cebuano: "Lugar", Waray: "Dapit" },
-        SILID: { Ilocano: "Kuarto", Cebuano: "Kwarto", Waray: "Sulod" },
-        PASILYO: { Ilocano: "Pasilyo", Cebuano: "Pasilyo", Waray: "Pasilyo" },
-        GARAHE: { Ilocano: "Garahe", Cebuano: "Garahe-An", Waray: "Garahe" },
-        PINTO: { Ilocano: "Ruangan", Cebuano: "Pultahan", Waray: "Purta" },
-        SALA: { Ilocano: "Sala", Cebuano: "Sala", Waray: "Sala" },
-        KUSINA: { Ilocano: "Kusina", Cebuano: "Kusina", Waray: "Kusina" },
-        KOMEDOR: { Ilocano: "Komedor", Cebuano: "Komedor", Waray: "Komedor" },
-        LABAHAN: {
-          Ilocano: "Paglabahan",
-          Cebuano: "Labhanan",
-          Waray: "Labahan",
-        },
-        BANYO: { Ilocano: "Pagdigosan", Cebuano: "Banyo", Waray: "Kasilyas" },
-        INIDORO: { Ilocano: "Kasilya", Cebuano: "Inidoro", Waray: "Inidoro" },
-        "SILID TULUGAN": {
-          Ilocano: "Kuarto Nga Pagturogan",
-          Cebuano: "Kwarto",
-          Waray: "Sulod-Katurogan",
-        },
-        "SILID PAMPAMILYA": {
-          Ilocano: "Kuarto Para Ti Pamilya",
-          Cebuano: "Kwarto Sa Pamilya",
-          Waray: "Kanan Pamilya Kwarto",
-        },
-        DAMITAN: {
-          Ilocano: "Pagik Kan Bado",
-          Cebuano: "Saninaan",
-          Waray: "Badu-An",
-        },
-        HAGDANAN: { Ilocano: "Agdan", Cebuano: "Hagdanan", Waray: "Hagdanan" },
-        AAKYAT: { Ilocano: "Agpangato", Cebuano: "Pagsaka", Waray: "Pasagka" },
-        BABABA: { Ilocano: "Agpababa", Cebuano: "Kanaog", Waray: "Paubos" },
-        "UNANG PALAPAG": {
-          Ilocano: "Umana Nga Tukad",
-          Cebuano: "Unang Andana",
-          Waray: "Una Nga Andana",
-        },
-        "SECOND FLOOR": {
-          Ilocano: "Maikadua A Kadsaaran",
-          Cebuano: "Ikaduhang Andana",
-          Waray: "Ikaduha Nga Andana",
-        },
-        "IKATLONG PALAPAG": {
-          Ilocano: "Maikatlo A Kadsaaran",
-          Cebuano: "Ikatulong Andana",
-          Waray: "Ikatulo Nga Andana",
-        },
-        BALKONAHE: {
-          Ilocano: "Balkon",
-          Cebuano: "Balkonahe",
-          Waray: "Balkonahe",
-        },
-        IMBAKAN: {
-          Ilocano: "Pagurnungan",
-          Cebuano: "Pagtipig",
-          Waray: "Bodega",
-        },
-        "SILID PANGEHERSISYO": {
-          Ilocano: "Kuarto Ti Panagehersisio",
-          Cebuano: "Silid Pang-Hersisyo",
-          Waray: "Himnasyo",
-        },
-        "SILID BAKANTE": {
-          Ilocano: "Kuarto Nga Bakante",
-          Cebuano: "Kwarto Nga Bakante",
-          Waray: "Libre Nga Kwarto",
-        },
-        BINTANA: { Ilocano: "Tawa", Cebuano: "Bintana", Waray: "Tangboan" },
-        SUSI: { Ilocano: "Tulbek", Cebuano: "Yawi", Waray: "Liyabe" },
-        BAKURAN: { Ilocano: "Pamaangan", Cebuano: "Loyo", Waray: "Bungsaran" },
-        UPUAN: { Ilocano: "Tugaw", Cebuano: "Lingkoranan", Waray: "Silya" },
-        ELEVATOR: {
-          Ilocano: "Elebetor",
-          Cebuano: "Elebeytor",
-          Waray: "Elebeytor",
-        },
-        GUTOM: { Ilocano: "Mabisinakon", Cebuano: "Gutom", Waray: "Gutom" },
-        KUMAIN: { Ilocano: "Mangan", Cebuano: "Kaon", Waray: "Kumaon" },
-        PAGKAIN: { Ilocano: "Makan", Cebuano: "Pagkaon", Waray: "Pagkaon" },
-        INUMIN: { Ilocano: "Danum", Cebuano: "Imnonon", Waray: "Inoma" },
-        "UMINOM NG TUBIG": {
-          Ilocano: "Uminom Ti Danum",
-          Cebuano: "Niinom Og Tubig",
-          Waray: "Nag-Inum Hin Tubig",
-        },
-        "UMINOM NG GATAS": {
-          Ilocano: "Uminom Ti Gatas",
-          Cebuano: "Niinom Og Gatas",
-          Waray: "Bag-Inum Hin Gatas",
-        },
-        "MAINIT NA TSOKOLATE": {
-          Ilocano: "Napudot Ti Tsokolate",
-          Cebuano: "Init Nga Tsokolate",
-          Waray: "Mapasô Nga Tsokolate",
-        },
-        "KATAS NG MANSANAS": {
-          Ilocano: "Tubbog Ti Mansanas",
-          Cebuano: "Duga Sa Mansanas",
-          Waray: "Duga Han Mansanas",
-        },
-        "KATAS NG KAHEL": {
-          Ilocano: "Tubbog Ti Kahel",
-          Cebuano: "Duga Sa Kahel",
-          Waray: "Duga Han Aranghita",
-        },
-        "KATAS NG KALAMANSI": {
-          Ilocano: "Tubbog Ti Kalamansi",
-          Cebuano: "Duga Sa Kalamansi",
-          Waray: "Duga Han Apog",
-        },
-        DYUS: {
-          Ilocano: "Tubbog",
-          Cebuano: "Duga",
-          Waray: "Katas Han Dyus",
-        },
-        KAPE: { Ilocano: "Kape", Cebuano: "Kape", Waray: "Kape" },
-        TSAA: { Ilocano: "Tsaa", Cebuano: "Tsa", Waray: "Simente" },
-        "TSAA NG GATAS": {
-          Ilocano: "Tsaa Ti Gatas",
-          Cebuano: "Gatas Nga Tsa",
-          Waray: "Tasa Hin Gatas",
-        },
-        SODA: { Ilocano: "Soda", Cebuano: "Soda", Waray: "Inumon Panpatugnaw" },
-        AGAHAN: { Ilocano: "Pammigat", Cebuano: "Pamahaw", Waray: "Pamahaw" },
-        MAYONES: { Ilocano: "Mayonis", Cebuano: "Mayones", Waray: "Mayonesa" },
-        ISDA: { Ilocano: "Ikan", Cebuano: "Isda", Waray: "Isda" },
-        BABOY: { Ilocano: "Baboy", Cebuano: "Baboy", Waray: "Karne Han Baboy" },
-        ASIN: { Ilocano: "Asin", Cebuano: "Asin", Waray: "Asin" },
-        SAGING: { Ilocano: "Saba", Cebuano: "Saging", Waray: "Saging" },
-        MANSANAS: {
-          Ilocano: "Mansanas",
-          Cebuano: "Mansanas",
-          Waray: "Mansanas",
-        },
-        "PULOT PUKYUTAN": {
-          Ilocano: "Uyokan Ti Diro",
-          Cebuano: "Pulot Pukyutan",
-          Waray: "Purot-Putyukan",
-        },
-        PANDESAL: {
-          Ilocano: "Tinapay",
-          Cebuano: "Pandesal",
-          Waray: "Pandesal",
-        },
-        TINAPAY: { Ilocano: "Tinapay", Cebuano: "Pandesal", Waray: "Tinapay" },
-        HOTDOG: { Ilocano: "Hotdog", Cebuano: "Hotdog", Waray: "Hotdog" },
-        ITLOG: { Ilocano: "Itlog", Cebuano: "Itlog", Waray: "Bunay" },
-        "NILAGANG ITLOG": {
-          Ilocano: "Poached Nga Itlog",
-          Cebuano: "Gibukalan Nga Itlog",
-          Waray: "Gin-Ihaw Nga Bunay",
-        },
-        "PRITONG ITLOG": {
-          Ilocano: "Prito Nga Itlog",
-          Cebuano: "Piniritong Itlog",
-          Waray: "Prito Nga Bunay",
-        },
-        TOCINO: { Ilocano: "Tocino", Cebuano: "Tocino", Waray: "Tocino" },
-        HAM: { Ilocano: "Ham", Cebuano: "Ham", Waray: "Ham" },
-        LONGGANISA: {
-          Ilocano: "Longganisa",
-          Cebuano: "Longganisa",
-          Waray: "Longanisa",
-        },
-        CEREAL: { Ilocano: "Cereal", Cebuano: "Cereal", Waray: "Seryal" },
-        PANCAKE: { Ilocano: "Pancake", Cebuano: "Pancake", Waray: "Pancake" },
-        MANTIKILYA: {
-          Ilocano: "Mantikilya",
-          Cebuano: "Mantika",
-          Waray: "Mantikilya",
-        },
-        JAM: { Ilocano: "Jam", Cebuano: "Jam", Waray: "Haliya" },
-        TANGHALIAN: {
-          Ilocano: "Pangaldaw",
-          Cebuano: "Paniudto",
-          Waray: "Paningodto",
-        },
-        KANIN: { Ilocano: "Inapoy", Cebuano: "Kan-On", Waray: "Humay" },
-        ADOBO: { Ilocano: "Adobo", Cebuano: "Adobo", Waray: "Adobo" },
-        LUMPIA: { Ilocano: "Lumpia", Cebuano: "Lumpia", Waray: "Lumpia" },
-        PANSIT: { Ilocano: "Pansit", Cebuano: "Pansit", Waray: "Pansit" },
-        "PRITONG MANOK": {
-          Ilocano: "Prito A Manok",
-          Cebuano: "Piniritong Manok",
-          Waray: "Prito Nga Manuk",
-        },
-        HAPUNAN: {
-          Ilocano: "Pang Malem",
-          Cebuano: "Panihapon",
-          Waray: "Pangiklop",
-        },
-        INIHAW: { Ilocano: "Tinuno", Cebuano: "Sinugba", Waray: "Mapuot" },
-        "INIHAW NA BABOY": {
-          Ilocano: "Tinuno Nga Baboy",
-          Cebuano: "Sinugbang Baboy",
-          Waray: "Mapuot Ha Baboy",
-        },
-        "INIHAW NA MANOK": {
-          Ilocano: "Tinuno Nga Manok",
-          Cebuano: "Sinugbang Manok",
-          Waray: "Sinugba Nga Manuk",
-        },
-        "INIHAW NA BANGUS": {
-          Ilocano: "Tinuno Nga Bangus",
-          Cebuano: "Sinugbang Bangus",
-          Waray: "Sinugba Ng Bangus",
-        },
-        "PAKSIW NA BANGUS": {
-          Ilocano: "Pakiwa Na Bangus",
-          Cebuano: "Paksiw Nga Bangus",
-          Waray: "Paksiw Nga Bangus",
-        },
-        MANGGA: { Ilocano: "Mangga", Cebuano: "Mangga", Waray: "Mangga" },
-        SITRUS: { Ilocano: "Sitrus", Cebuano: "Sitrus", Waray: "Sinturis" },
-        ASUKAL: { Ilocano: "Asukar", Cebuano: "Asukar", Waray: "Asukar" },
-        AMBULANSYA: {
-          Ilocano: "Ambulansya",
-          Cebuano: "Ambulansya",
-          Waray: "Amulansya",
-        },
-        EROPLANO: {
-          Ilocano: "Eroplano",
-          Cebuano: "Eroplano",
-          Waray: "Idroplano",
-        },
-        PALIPARAN: {
-          Ilocano: "Paliparan",
-          Cebuano: "Paliparan",
-          Waray: "Paluparan",
-        },
-        BUS: { Ilocano: "Bus", Cebuano: "Bus", Waray: "Bus" },
-        BISIKLETA: {
-          Ilocano: "Bisikleta",
-          Cebuano: "Bisikleta",
-          Waray: "Bisikleta",
-        },
-        KALESA: { Ilocano: "Kalesa", Cebuano: "Kalesa", Waray: "Karuwahe" },
-        "TRAK NG BASURA": {
-          Ilocano: "Track Ti Basura",
-          Cebuano: "Truc Sa Basura",
-          Waray: "Trak Han Basura",
-        },
-        "TRAK NG BUMBERO": {
-          Ilocano: "Trak Ti Bumbero",
-          Cebuano: "Truc Sa Bumbero",
-          Waray: "Trak Han Bumbero",
-        },
-        HELIKOPTER: {
-          Ilocano: "Helikopter",
-          Cebuano: "Helikopter",
-          Waray: "Helikopter",
-        },
-        DYIP: { Ilocano: "Dyip", Cebuano: "Jip", Waray: "Dyip" },
-        "HABAL-HABAL": {
-          Ilocano: "Habal-Habal",
-          Cebuano: "Habal-Habal",
-          Waray: "Habal-Habal",
-        },
-        MOTORSIKLO: {
-          Ilocano: "Motorsiklo",
-          Cebuano: "Motorsiklo",
-          Waray: "Motorsiklo",
-        },
-        KOTSE: { Ilocano: "Kotse", Cebuano: "Holmigas", Waray: "Behikulo" },
-        LANGGAM: { Ilocano: "Kuton", Cebuano: "Lamigas", Waray: "Tubak" },
-        BUWAYA: { Ilocano: "Bwaya", Cebuano: "Buwaya", Waray: "Buaya" },
-        IBON: { Ilocano: "Billit", Cebuano: "Langgam", Waray: "Tamsi" },
-        PANIKI: {
-          Ilocano: "Panpanniki",
-          Cebuano: "Paniki",
-          Waray: "Kulalaknit",
-        },
-        "PARU-PARU": {
-          Ilocano: "Kulibangbang",
-          Cebuano: "Alibang-Bang",
-          Waray: "Alibangbang",
-        },
-        DAGA: { Ilocano: "Bao", Cebuano: "Ilaga", Waray: "Yatot" },
-        RABBIT: { Ilocano: "Kuneho", Cebuano: "Kuneho", Waray: "Koneho" },
-        SAKIT: { Ilocano: "Uyek", Cebuano: "Sakit", Waray: "Ul-Ol" },
-        "NAMAMAGANG LALAMUNAN": {
-          Ilocano: "Panateng",
-          Cebuano: "Hubag Sa Tutunlan",
-          Waray: "Sakit Ha But-Ol",
-        },
-        UBO: { Ilocano: "Ubo", Cebuano: "Ubo", Waray: "Ubo" },
-        SIPON: { Ilocano: "Muteg", Cebuano: "Sip-On", Waray: "Sip-On" },
-        EMERHENSIYA: {
-          Ilocano: "Emerhensiya",
-          Cebuano: "Emerhensya",
-          Waray: "Emerhensiya",
-        },
-        BINGI: { Ilocano: "Tuleng", Cebuano: "Bungol", Waray: "Búngol" },
-        DOKTOR: { Ilocano: "Doktor", Cebuano: "Doktor", Waray: "Dóktor" },
-        "SAKIT NG ULO": {
-          Ilocano: "Sakit Ti Ulo",
-          Cebuano: "Labad Ang Ulo",
-          Waray: "Soul San Úlo",
-        },
-        DIARRHEA: {
-          Ilocano: "Burís Tboli",
-          Cebuano: "Kalibanga",
-          Waray: "Básyar",
-        },
-        PAGKAHILO: {
-          Ilocano: "Maulaw",
-          Cebuano: "Nahilo",
-          Waray: "Pagkálipngaw",
-        },
-        FATIGUE: { Ilocano: "Nabannog Ak", Cebuano: "Kakapoy", Waray: "Págal" },
-        KABAG: { Ilocano: "Kabag", Cebuano: "Sakit Ang Tyan", Waray: "Kábag" },
-        AGHAM: { Ilocano: "Agham", Cebuano: "Siyensya", Waray: "Siyensya" },
-        MATEMATIKA: {
-          Ilocano: "Matematika",
-          Cebuano: "Matematika",
-          Waray: "Matematika",
-        },
-        KOMPYUTER: {
-          Ilocano: "Kompyuter",
-          Cebuano: "Komputer",
-          Waray: "Kompyuter",
-        },
-        FILIPINO: {
-          Ilocano: "Filipino",
-          Cebuano: "Filipino",
-          Waray: "Filipino",
-        },
-        "ARALING PANLIPUNAN": {
-          Ilocano: "Araling Panlipunan",
-          Cebuano: "Araling Panlipunan",
-          Waray: "Araling Panlipunan",
-        },
-        INGLES: { Ilocano: "Ingles", Cebuano: "Ingles", Waray: "Ingles" },
-        HEKASI: { Ilocano: "Hekasi", Cebuano: "Hekasi", Waray: "Hekasi" },
-        RELIHIYON: {
-          Ilocano: "Relihiyon",
-          Cebuano: "Relihiyon",
-          Waray: "Relihiyon",
-        },
-        PILOSOPIYA: {
-          Ilocano: "Pilosopiya",
-          Cebuano: "Pilosopiya",
-          Waray: "Pilosopiya",
-        },
-        "TAKDANG ARALIN": {
-          Ilocano: "Eramidenta Balay",
-          Cebuano: "Buluhaton Sa Balay",
-          Waray: "Pag Gahin",
-        },
-        PAGSUSULIT: {
-          Ilocano: "Pagsusulit",
-          Cebuano: "Eksaminasyon",
-          Waray: "Pagsurat Nga Eksaminasyon",
-        },
-        "GAWAIN SA BAHAY": {
-          Ilocano: "Trabaho Ti Balay",
-          Cebuano: "Buluhaton Sa Balay",
-          Waray: "Buruhaton Ha Panimalay",
-        },
-        MAKABAYAN: {
-          Ilocano: "Makabayan",
-          Cebuano: "Makabayan",
-          Waray: "Makabayan",
-        },
-        "MAGANDANG UMAGA": {
-          Ilocano: "Naimbag Nga Bigat",
-          Cebuano: "Maayong Buntag",
-          Waray: "Maupay Nga Aga",
-        },
-        "MAGANDANG HAPON": {
-          Ilocano: "Naimbag A Malem",
-          Cebuano: "Maayong Hapon",
-          Waray: "Maupay Nga Kulop",
-        },
-        "MAGANDANG GABI": {
-          Ilocano: "Naimbag A Rabii",
-          Cebuano: "Maayong Gabie",
-          Waray: "Maupay Nga Gab-I",
-        },
-        "KUMUSTA KA NA": {
-          Ilocano: "Kumusta Kan",
-          Cebuano: "Kamusta Na Ka?",
-          Waray: "Kumusta Ka Na?",
-        },
-        "AKO AY MABUTI": {
-          Ilocano: "Nasasayaat Tak Met",
-          Cebuano: "Maayo Ka Ko",
-          Waray: "Maupay Ako",
-        },
-        "MABUTI AKO": {
-          Ilocano: "Nasingpet Tak",
-          Cebuano: "Maayo Ko",
-          Waray: "Maupay Ako",
-        },
-        "ANONG GINAGAWA MO": {
-          Ilocano: "Ania Ti Ar-Aramidem",
-          Cebuano: "Unsa Imong Gibuhat?",
-          Waray: "Ano An Im Ginbubuhat?",
-        },
-        "WALA LANG": {
-          Ilocano: "Awan",
-          Cebuano: "Wala Lang",
-          Waray: "Waray La",
-        },
-        "ANO PANGALAN MO": {
-          Ilocano: "Ania Ti Naganmo",
-          Cebuano: "Unsa Imong Pangan",
-          Waray: "Ano Im Ngaran?",
-        },
-        "SAAN KA NAGMULA": {
-          Ilocano: "Taga-Ano Ka?",
-          Cebuano: "Asa Ka Gikan",
-          Waray: "Taga Diin Ka?",
-        },
-        "AH GANON": {
-          Ilocano: "Ay Husto Dayta",
-          Cebuano: "Ah Mao Ba",
-          Waray: "Aw Amo",
-        },
-        "MASAYA AKONG MAKILALA KA": {
-          Ilocano: "Naragsakak A Makaam-Ammo Ka",
-          Cebuano: "Nalipay Kong Nakaila Ka",
-          Waray: "Nalipay Ako Hin Pagkilala Ha Imo",
-        },
-        "PAUMANHIN ANO IYON": {
-          Ilocano: "Sorry Ania Dayta?",
-          Cebuano: "Pasensya, Unsa Gani To?",
-          Waray: "Pasaylua Ano Adto?",
-        },
-        "HANGGANG SA MULI": {
-          Ilocano: "Inggana Diyay Manem",
-          Cebuano: "Magkita Ta Pag-Usab",
-          Waray: "Kitaay Kita Utro",
-        },
-        "MAGKITA TAYO MAMAYA": {
-          Ilocano: "Agkita Ta Damdaman",
-          Cebuano: "Magkita Ta Unya",
-          Waray: "Magkita Kita Unina",
-        },
-        "MAHAL KITA": {
-          Ilocano: "Ayayaten Ka",
-          Cebuano: "Gihigugma Ta Ka",
-          Waray: "Hinigugma Ko Ikaw",
-        },
-        "ILOCOS SUR": {
-          Ilocano: "Ilocos Sur",
-          Cebuano: "Ilocos Sur",
-          Waray: "Ilocos Sur",
-        },
-        "ILOCOS NORTE": {
-          Ilocano: "Ilocos Norte",
-          Cebuano: "Ilocos Norte",
-          Waray: "Ilocos Norte",
-        },
-        MANILA: { Ilocano: "Manila", Cebuano: "Maynila", Waray: "Manila" },
-        DAVAO: { Ilocano: "Davao", Cebuano: "Davao", Waray: "Davao" },
-        CEBU: { Ilocano: "Cebu", Cebuano: "Sugbo", Waray: "Cebu" },
-        ZAMBOANGA: {
-          Ilocano: "Zamboanga",
-          Cebuano: "Zamboanga",
-          Waray: "Zamboanga",
-        },
-        "NUEVA ECIJA": {
-          Ilocano: "Nueva Ecija",
-          Cebuano: "Nueva Ecija",
-          Waray: "Nueva Ecija",
-        },
-        BULAKLAK: { Ilocano: "Sabong", Cebuano: "Buwak", Waray: "Bukad" },
-        BALAHIBO: {
-          Ilocano: "Dotdot",
-          Cebuano: "Balahibo",
-          Waray: "Barahibo",
-        },
-        "IBA PA": {
-          Ilocano: "Sabalipay",
-          Cebuano: "Og Lain Pa",
-          Waray: "Iba Pa",
-        },
-        PULONG: { Ilocano: "Taripnong", Cebuano: "Pulong", Waray: "Pulong" },
-        ZIPPER: {
-          Ilocano: "Zipper Ti Siper",
-          Cebuano: "Zipper",
-          Waray: "Siper",
-        },
-        PARTIDO: { Ilocano: "Grupo", Cebuano: "Partido", Waray: "Pagkirita" },
-        PERO: { Ilocano: "Ngem", Cebuano: "Gani", Waray: "Pero" },
-        SA: { Ilocano: "Iti", Cebuano: "Sa", Waray: "Sa" },
-        "MULA SA": {
-          Ilocano: "Manipud",
-          Cebuano: "Gikan Sa",
-          Waray: "Tikang Ha",
-        },
-        ANUMANG: {
-          Ilocano: "Aniaman A Banag",
-          Cebuano: "Bisan Unsa",
-          Waray: "Bisan Ano",
-        },
-        KANYA: { Ilocano: "Bagi Na", Cebuano: "Iyaha", Waray: "Iya" },
-        "SA KANYA": {
-          Ilocano: "Bagi Na Dayta",
-          Cebuano: "Ngadto Kaniya",
-          Waray: "Ha Kaniya",
-        },
-        AKO: { Ilocano: "Siak", Cebuano: "Ako", Waray: "Ako" },
-        AKIN: { Ilocano: "Kaniak", Cebuano: "Akoa", Waray: "Akon" },
-        "SA AKIN": {
-          Ilocano: "Para Kaniak",
-          Cebuano: "Kanako",
-          Waray: "Ha Akon",
-        },
-        AT: { Ilocano: "Ken", Cebuano: "Og", Waray: "Ngan" },
-        ANG: { Ilocano: "Ti", Cebuano: "Ang", Waray: "An" },
-        KUNG: { Ilocano: "No", Cebuano: "Kon", Waray: "Kon" },
-        o: { Ilocano: "Wenno", Cebuano: "o", Waray: "o" },
-        A: { Ilocano: "A", Cebuano: "A", Waray: "A" },
-        B: { Ilocano: "B", Cebuano: "B", Waray: "B" },
-        C: { Ilocano: "C", Cebuano: "C", Waray: "C" },
-        D: { Ilocano: "D", Cebuano: "D", Waray: "D" },
-        E: { Ilocano: "E", Cebuano: "E", Waray: "E" },
-        F: { Ilocano: "F", Cebuano: "F", Waray: "F" },
-        G: { Ilocano: "G", Cebuano: "G", Waray: "G" },
-        H: { Ilocano: "H", Cebuano: "H", Waray: "H" },
-        I: { Ilocano: "I", Cebuano: "I", Waray: "I" },
-        J: { Ilocano: "J", Cebuano: "J", Waray: "J" },
-        K: { Ilocano: "K", Cebuano: "K", Waray: "K" },
-        L: { Ilocano: "L", Cebuano: "L", Waray: "L" },
-        M: { Ilocano: "M", Cebuano: "M", Waray: "M" },
-        N: { Ilocano: "N", Cebuano: "N", Waray: "N" },
-        Ñ: { Ilocano: "Ñ", Cebuano: "Ñ", Waray: "Ñ" },
-        O: { Ilocano: "O", Cebuano: "O", Waray: "O" },
-        P: { Ilocano: "P", Cebuano: "P", Waray: "P" },
-        Q: { Ilocano: "Q", Cebuano: "Q", Waray: "Q" },
-        R: { Ilocano: "R", Cebuano: "R", Waray: "R" },
-        S: { Ilocano: "S", Cebuano: "S", Waray: "S" },
-        T: { Ilocano: "T", Cebuano: "T", Waray: "T" },
-        U: { Ilocano: "U", Cebuano: "U", Waray: "U" },
-        V: { Ilocano: "V", Cebuano: "V", Waray: "V" },
-        W: { Ilocano: "W", Cebuano: "W", Waray: "W" },
-        X: { Ilocano: "X", Cebuano: "X", Waray: "X" },
-        Y: { Ilocano: "Y", Cebuano: "Y", Waray: "Y" },
-        Z: { Ilocano: "Z", Cebuano: "Z", Waray: "Z" },
-        ISA: { Ilocano: "Maysa", Cebuano: "Usa", Waray: "Usa" },
-        DALAWA: { Ilocano: "Dua", Cebuano: "Duha", Waray: "Doha" },
-        TATLO: { Ilocano: "Tallo", Cebuano: "Tulo", Waray: "Tulo" },
-        APAT: { Ilocano: "Upat", Cebuano: "Upat", Waray: "Upat" },
-        LIMA: { Ilocano: "Lima", Cebuano: "Lima", Waray: "Lima" },
-        ANIM: { Ilocano: "Inem", Cebuano: "Unom", Waray: "Unom" },
-        PITO: { Ilocano: "Pito", Cebuano: "Pito", Waray: "Pito" },
-        WALO: { Ilocano: "Walo", Cebuano: "Walo", Waray: "Walo" },
-        SIYAM: { Ilocano: "Siyam", Cebuano: "Siyam", Waray: "Siyam" },
-        SAMPU: { Ilocano: "Sangapulo", Cebuano: "Napulo", Waray: "Napulo" },
-        "LABING ISA": {
-          Ilocano: "Sangapulo Ket Maysa",
-          Cebuano: "Onse",
-          Waray: "Onse",
-        },
-        "LABING DALAWA": {
-          Ilocano: "Sangapulo Ket Dua",
-          Cebuano: "Dose",
-          Waray: "Dose",
-        },
-        "LABING TATLO": {
-          Ilocano: "Sangapulo Ket Tallo",
-          Cebuano: "Trese",
-          Waray: "Trese",
-        },
-        "LABING APAT": {
-          Ilocano: "Sangapulo Ket Upat",
-          Cebuano: "Katorse",
-          Waray: "Katorse",
-        },
-        "LABING LIMA": {
-          Ilocano: "Sangapulo Ket Lima",
-          Cebuano: "Kinse",
-          Waray: "Kinse",
-        },
-        "LABING ANIM": {
-          Ilocano: "Sangapulo Ket Inem",
-          Cebuano: "Desisais",
-          Waray: "Desisais",
-        },
-        "LABING PITO": {
-          Ilocano: "Sangapulo Ket Pito",
-          Cebuano: "Desisyete",
-          Waray: "Desisyete",
-        },
-        "LABING WALO": {
-          Ilocano: "Sangapulo Ket Walo",
-          Cebuano: "Desiotso",
-          Waray: "Desi-Otso",
-        },
-        "LABING SIYAM": {
-          Ilocano: "Sangapulo Ket Siyam",
-          Cebuano: "Desinuybe",
-          Waray: "Desinuebe",
-        },
-        DALAWAMPU: {
-          Ilocano: "Duapulo Ket",
-          Cebuano: "Baynte",
-          Waray: "Bente",
-        },
-        "DALAWAMPUT ISA": {
-          Ilocano: "Dua Pulo Ket Maysa",
-          Cebuano: "Baynte Uno",
-          Waray: "Bente Uno",
-        },
-        "DALAWAMPUT DALAWA": {
-          Ilocano: "Dua Pulo Ket Dua",
-          Cebuano: "Baynte Dos",
-          Waray: "Bente Dos",
-        },
-        "DALAWAMPUT TATLO": {
-          Ilocano: "Dua Pulo Ket Tallo",
-          Cebuano: "Baynte Tres",
-          Waray: "Bente Tres",
-        },
-        "DALAWAMPUT APAT": {
-          Ilocano: "Dua Pulo Ket Upat",
-          Cebuano: "Baynte Kwatro",
-          Waray: "Bente Kwatro",
-        },
-        "DALAWAMPUT LIMA": {
-          Ilocano: "Dua Pulo Ket Lima",
-          Cebuano: "Baynte Sinko",
-          Waray: "Bente Singko",
-        },
-        "DALAWAMPUT ANIM": {
-          Ilocano: "Dua Pulo Ket Inem",
-          Cebuano: "Baynte Sais",
-          Waray: "Bente Sais",
-        },
-        "DALAWAMPUT PITO": {
-          Ilocano: "Dua Pulo Ket Pito",
-          Cebuano: "Baynte Syete",
-          Waray: "Bente Syete",
-        },
-        "DALAWAMPUT WALO": {
-          Ilocano: "Dua Pulo Ket Walo",
-          Cebuano: "Baynte Otso",
-          Waray: "Bente Otso",
-        },
-        "DALAWAMPUT SIYAM": {
-          Ilocano: "Dua Pulo Ket Siyam",
-          Cebuano: "Baynte Nuwebe",
-          Waray: "Bente Nuebe",
-        },
-        TATLUMPU: { Ilocano: "Tallopulo", Cebuano: "Traynta", Waray: "Trenta" },
-        APATNAPU: {
-          Ilocano: "Upat A Pulo",
-          Cebuano: "Kwarenta",
-          Waray: "Kwarenta",
-        },
-        ANIMNAPU: {
-          Ilocano: "Inem A Pulo",
-          Cebuano: "Saisenta",
-          Waray: "Saysenta",
-        },
-        PITUMPU: {
-          Ilocano: "Pito A Pulo",
-          Cebuano: "Syetenta",
-          Waray: "Setenta",
-        },
-        WALUMPU: {
-          Ilocano: "Walo A Pulo",
-          Cebuano: "Otsenta",
-          Waray: "Otsenta",
-        },
-        SIYAMNAPU: {
-          Ilocano: "Siyam A Pulo",
-          Cebuano: "Nubyenta",
-          Waray: "Nobenta",
-        },
-        "ISANG DAAN": {
-          Ilocano: "Sangagasut",
-          Cebuano: "Usa Ka Gatos",
-          Waray: "Syen",
-        },
-        "DALAWANG DAAN": {
-          Ilocano: "Dua Gasut",
-          Cebuano: "Duha Ka Gatos",
-          Waray: "Dosyentos",
-        },
-        "TATLONG DAAN": {
-          Ilocano: "Tallo Gasut",
-          Cebuano: "Tulo Ka Gatos",
-          Waray: "Tresyentos",
-        },
-        "APAT NA DAAN": {
-          Ilocano: "Upat Gasut",
-          Cebuano: "Upat Ka Gatos",
-          Waray: "Kwartosyentos",
-        },
-        "LIMANG DAAN": {
-          Ilocano: "Lima Gasut",
-          Cebuano: "Lima Ka Gatos",
-          Waray: "Kenyintos",
-        },
-        "ANIM NA DAAN": {
-          Ilocano: "Inem Gasut",
-          Cebuano: "Unom Ka Gatos",
-          Waray: "Saysyentos",
-        },
-        "PITONG DAAN": {
-          Ilocano: "Pito Gasut",
-          Cebuano: "Pito Ka Gatos",
-          Waray: "Syete Syentos",
-        },
-        "WALONG DAAN": {
-          Ilocano: "Walo Gasut",
-          Cebuano: "Walo Ka Gatos",
-          Waray: "Otso Syentos",
-        },
-        "SIYAM NA DAAN": {
-          Ilocano: "Siyam A Gasut",
-          Cebuano: "Siyam Ka Gatos",
-          Waray: "Nuebe Syentos",
-        },
-        "ISANG LIBO": {
-          Ilocano: "Sangaribu",
-          Cebuano: "Usa Ka Libo",
-          Waray: "Mil",
-        },
-        MILLION: { Ilocano: "Milyon", Cebuano: "Milyon", Waray: "Milyon" },
-        BILLION: { Ilocano: "Bilion", Cebuano: "Bilyon", Waray: "Bilyon" },
-        TRILLION: { Ilocano: "Trilion", Cebuano: "Trilyon", Waray: "Trilyon" },
-      };
-
-      // Translation function
-      function translateText(text, language) {
-        var normalizedText = text.toUpperCase();
-        return translationTable[normalizedText]?.[language] || text;
-      }
-
-      function fetchTranslation() {
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/translation", true);
-        xhr.onreadystatechange = function () {
-          if (xhr.readyState === 4 && xhr.status === 200) {
-            var data = JSON.parse(xhr.responseText);
-            var text = data.text || "N/A";
-            document.getElementById("predictedText").textContent = text;
-            document.getElementById("ilocanoTranslation").textContent =
-              translateText(text, "Ilocano");
-            document.getElementById("cebuanoTranslation").textContent =
-              translateText(text, "Cebuano");
-            document.getElementById("warayTranslation").textContent =
-              translateText(text, "Waray");
+        // Extract keypoints for the current frame
+        let frameKeypoints = [];
+        if (results.multiHandLandmarks.length === 2) {
+          // Both hands detected
+          for (const landmarks of results.multiHandLandmarks) {
+            for (const point of landmarks) {
+              frameKeypoints.push(point.x, point.y, point.z); // Flatten the keypoints
+            }
           }
-        };
-        xhr.send();
-      }
+        } else if (results.multiHandLandmarks.length === 1) {
+          // Only one hand detected
+          const landmarks = results.multiHandLandmarks[0];
+          for (const point of landmarks) {
+            frameKeypoints.push(point.x, point.y, point.z); // Flatten the keypoints
+          }
+          // Fill the missing hand with zeros
+          frameKeypoints.push(...Array(63).fill(0)); // 21 landmarks × 3 (x, y, z)
+        } else {
+          // No hands detected
+          frameKeypoints.push(...Array(126).fill(0)); // 42 landmarks × 3 (x, y, z)
+        }
 
-      function updateTranslation() {
-        var selectedLanguage = document.querySelector(".language-select").value;
-        document.getElementById("cebuano").style.display =
-          selectedLanguage === "cebuano" || selectedLanguage === "all"
-            ? "block"
-            : "none";
-        document.getElementById("ilocano").style.display =
-          selectedLanguage === "ilocano" || selectedLanguage === "all"
-            ? "block"
-            : "none";
-        document.getElementById("waray").style.display =
-          selectedLanguage === "waray" || selectedLanguage === "all"
-            ? "block"
-            : "none";
-      }
+        // Add the current frame's keypoints to the sequence
+        sequence.push(frameKeypoints);
 
-      function startTranslationPolling() {
-        fetchTranslation();
-        setInterval(fetchTranslation, 1000);
-      }
+        // Keep only the last 40 frames
+        if (sequence.length > 40) {
+          sequence.shift(); // Remove the oldest frame
+        }
 
-      document.addEventListener("DOMContentLoaded", function () {
-        startTranslationPolling();
-      });
-    </script>
-  </body>
+        // If we have 40 frames, send the keypoints to the backend
+        if (sequence.length === 40) {
+          // Flatten the sequence into a single array
+          const keypoints = sequence.flat();
+          sendKeypoints(keypoints);
+        }
+      } else {
+        console.log("No hand landmarks detected.");
+      }
+    }
+
+    let userId = Math.floor(Math.random() * 1000000); // Generate a random user ID
+
+
+    async function getPrediction(keypoints) {
+      try {
+        const retrievePred = await fetch(`http://127.0.0.1:5000/get_prediction/${userId}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keypoints, user_id: userId }) // Include user ID
+        });
+
+        console.log(retrievePred.prediction)
+        
+        if (retrievePred.ok) {
+          predictionText.innerText = `Prediction: ${data.prediction}`;
+        } else {
+          console.error("Server error:", data.error);
+          predictionText.innerText = "Error: " + data.error;
+        }
+
+      } catch (error) {
+        console.error("Error sending keypoints:", error);
+        predictionText.innerText = "Error: Failed to send keypoints";
+      }
+    }
+
+    async function sendKeypoints(keypoints) {
+      try {
+        const response = await fetch("http://127.0.0.1:5000/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keypoints, user_id: userId }) // Include user ID
+        });
+
+        const data = await response.json();
+
+        predictionText.innerText = `Prediction: ${data.prediction}`;
+
+        getPrediction(keypoints)
+
+        if (response.ok) {
+          predictionText.innerText = `Prediction: ${data.prediction}`;
+        } else {
+          console.error("Server error:", data.error);
+          predictionText.innerText = "Error: " + data.error;
+        }
+      } catch (error) {
+        console.error("Error sending keypoints:", error);
+        predictionText.innerText = "Error: Failed to send keypoints";
+      }
+    }
+
+    // Utility functions for drawing landmarks and connections
+    function drawLandmarks(ctx, landmarks, options) {
+      const { color = "#FF0000", lineWidth = 2 } = options;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+      for (const point of landmarks) {
+        ctx.lineTo(point.x * canvas.width, point.y * canvas.height);
+      }
+      ctx.stroke();
+    }
+
+    function drawConnectors(ctx, landmarks, connections, options) {
+      const { color = "#00FF00", lineWidth = 2 } = options;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      for (const connection of connections) {
+        const [startIdx, endIdx] = connection;
+        const start = landmarks[startIdx];
+        const end = landmarks[endIdx];
+        ctx.beginPath();
+        ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+        ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+        ctx.stroke();
+      }
+    }
+
+    // Start the camera
+    startCamera();
+  </script>
+</body>
+
 </html>
