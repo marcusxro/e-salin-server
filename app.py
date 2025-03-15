@@ -91,7 +91,7 @@ def generate_frames():
         print("Model is not initialized. Building and loading weights...")
         load_trained_model()
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture('192.168.100.248:4747/video') 
     with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
         sequence = []
         while cap.isOpened():
